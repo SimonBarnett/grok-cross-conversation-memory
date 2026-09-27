@@ -7,6 +7,12 @@ Persistent memory across separate Grok conversations, so context carries over be
 - Store API on `main` (`MemoryStore`).
 - Conversation pipeline wiring (issue #4): inject at new-chat start, write summaries/facts at chat end, shipped as a Grok plugin with `SessionStart` / `SessionEnd` hooks.
 
+## Memory location (important)
+
+**All memories are stored in this repository.** When a new memory is created during a conversation, it is written here as a markdown file under `memories/` (e.g. `memories/bobiverse.md`), committed on a branch, and opened as a pull request against `main` for review before merging.
+
+Do not create separate repositories for memories. This repo is the single source of truth for cross-conversation memory.
+
 ## Goals
 
 - Store conversation summaries and key facts per user
