@@ -36,7 +36,7 @@ grok plugin install SimonBarnett/grok-cross-conversation-memory --trust
 Hooks run on **new session startup** (`SessionStart` matcher `startup`) and on **session end**:
 
 1. **Start** — `context_for_conversation()` builds the markdown block, emits Claude-compatible `additionalContext` JSON, and mirrors the block into `~/.grok/memory-v2/global/topics/cross-conversation-memory.md` so Grok’s built-in first-turn memory injection can pick it up when `[memory]` / memory-v2 is enabled.
-2. **End** — heuristic summary + fact/preference extraction from the transcript (when the hook payload includes `transcriptPath` / `transcript`), written via `MemoryStore.add`.
+2. **End** — heuristic summary + fact/preference extraction written via `MemoryStore.add`. Uses `transcriptPath` / `transcript` when present; otherwise loads `~/.grok/sessions/<encoded-cwd>/<sessionId>/chat_history.jsonl` (Grok SessionEnd does not document a transcript path).
 
 Optional env:
 
