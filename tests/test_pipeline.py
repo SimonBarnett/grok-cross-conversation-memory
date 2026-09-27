@@ -16,7 +16,10 @@ from src.pipeline import (
     ConversationPipeline,
     derive_facts,
     derive_summary,
+    encode_cwd_for_sessions,
+    resolve_session_transcript,
     resolve_user_id,
+    transcript_from_chat_history,
 )
 
 
@@ -97,6 +100,37 @@ class TestPipeline(unittest.TestCase):
             else:
                 os.environ["GROK_MEMORY_USER"] = old
 
+    def test_resolve_session_transcript_from_disk(self):
+        root = Path(self._tmp.name) / "sessions"
+        cwd = r"C:\proj"
+        sid = "sess-abc"
+        session_dir = root / encode_cwd_for_sessions(cwd) / sid
+        session_dir.mkdir(parents=True)
+        history = session_dir / "chat_history.jsonl"
+        history.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "<user_query>\nremember: park docs first\n</user_query>",
+                                }
+                            ],
+                        }
+                    ),
+                    json.dumps({"type": "system", "content": "ignore me"}),
+                ]
+            ),
+            encoding="utf-8",
+        )
+        text = resolve_session_transcript(sid, cwd=cwd, root=root)
+        self.assertIn("User:", text)
+        self.assertIn("park docs first", text)
+        self.assertIn("park docs first", transcript_from_chat_history(history))
+
 
 class TestHookScripts(unittest.TestCase):
     def setUp(self):
@@ -158,6 +192,33 @@ class TestHookScripts(unittest.TestCase):
         store = MemoryStore(Path(self._tmp.name) / ".grok" / "memory.db")
         memories = store.list_for_user("hookuser")
         self.assertTrue(any("park docs" in m.content for m in memories))
+
+    def test_session_end_loads_chat_history_without_transcript_path(self):
+        sessions = Path(self._tmp.name) / ".grok" / "sessions"
+        cwd = str(Path(self._tmp.name) / "ws")
+        sid = "end-disk-1"
+        session_dir = sessions / encode_cwd_for_sessions(cwd) / sid
+        session_dir.mkdir(parents=True)
+        (session_dir / "chat_history.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "content": "User tip: remember: always ACK before work",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = self._run_hook(
+            "session_end.py",
+            {"sessionId": sid, "cwd": cwd},
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        data = json.loads(proc.stdout or "{}")
+        self.assertGreaterEqual(data.get("stored", 0), 1)
+        store = MemoryStore(Path(self._tmp.name) / ".grok" / "memory.db")
+        memories = store.list_for_user("hookuser")
+        self.assertTrue(any("ACK before work" in m.content for m in memories))
 
 
 if __name__ == "__main__":

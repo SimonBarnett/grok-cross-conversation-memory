@@ -15,6 +15,7 @@ from src.pipeline import (  # noqa: E402
     ConversationPipeline,
     hook_event_from_stdin,
     load_transcript,
+    resolve_session_transcript,
 )
 
 
@@ -26,6 +27,12 @@ def main() -> int:
         or event.get("conversationId")
         or None
     )
+    cwd = (
+        event.get("cwd")
+        or event.get("workspaceRoot")
+        or event.get("workspace_root")
+        or None
+    )
     transcript = ""
     for key in ("transcriptPath", "transcript_path", "transcriptFile"):
         if event.get(key):
@@ -33,6 +40,9 @@ def main() -> int:
             break
     if not transcript and isinstance(event.get("transcript"), str):
         transcript = event["transcript"]
+    # Grok SessionEnd does not document transcriptPath — load from session dir.
+    if not transcript.strip() and session_id:
+        transcript = resolve_session_transcript(str(session_id), cwd=cwd)
 
     # Skip trivial empty ends — nothing to store.
     if not transcript.strip() and not event.get("summary") and not event.get("facts"):

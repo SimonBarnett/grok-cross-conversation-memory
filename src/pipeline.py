@@ -231,9 +231,139 @@ def load_transcript(path: Optional[str | Path]) -> str:
     if not p.is_file():
         return ""
     try:
+        if p.name == "chat_history.jsonl":
+            return transcript_from_chat_history(p)
         return p.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def sessions_root() -> Path:
+    grok_home = os.environ.get("GROK_HOME", "").strip()
+    base = Path(grok_home) if grok_home else Path.home() / ".grok"
+    return base / "sessions"
+
+
+def encode_cwd_for_sessions(cwd: str) -> str:
+    """URL-encode a workspace path the way Grok names session group dirs."""
+    # urllib.parse.quote with safe='' matches Grok's C%3A%5C... layout on Windows.
+    from urllib.parse import quote
+
+    return quote(str(Path(cwd)), safe="")
+
+
+def find_session_dir(
+    session_id: str,
+    cwd: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> Optional[Path]:
+    """Locate ``~/.grok/sessions/<encoded-cwd>/<session-id>/``."""
+    if not session_id:
+        return None
+    root = root or sessions_root()
+    if not root.is_dir():
+        return None
+    if cwd:
+        candidate = root / encode_cwd_for_sessions(cwd) / session_id
+        if candidate.is_dir():
+            return candidate
+    # Fall back: search one level of cwd groups (bounded).
+    try:
+        for group in root.iterdir():
+            if not group.is_dir():
+                continue
+            candidate = group / session_id
+            if candidate.is_dir():
+                return candidate
+    except OSError:
+        return None
+    return None
+
+
+def resolve_session_transcript(
+    session_id: Optional[str],
+    cwd: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> str:
+    """Load a usable transcript for SessionEnd when the hook payload has none.
+
+    Grok SessionEnd does not document ``transcriptPath``. Session files live at
+    ``~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl``.
+    """
+    if not session_id:
+        return ""
+    session_dir = find_session_dir(session_id, cwd=cwd, root=root)
+    if not session_dir:
+        return ""
+    history = session_dir / "chat_history.jsonl"
+    if history.is_file():
+        return transcript_from_chat_history(history)
+    updates = session_dir / "updates.jsonl"
+    if updates.is_file():
+        return load_transcript(updates)
+    return ""
+
+
+def transcript_from_chat_history(path: Path, max_user_chars: int = 8000) -> str:
+    """Reduce ``chat_history.jsonl`` to ``User:`` lines for summarisation."""
+    lines: list[str] = []
+    used = 0
+    try:
+        raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for raw in raw_lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        if row.get("type") != "user":
+            continue
+        text = _content_to_text(row.get("content"))
+        if not text:
+            continue
+        # Prefer the inner user_query when present (agent harness wraps).
+        extracted = _extract_user_query(text) or text
+        extracted = extracted.strip()
+        if len(extracted) < 3:
+            continue
+        # Skip enormous synthetic blobs.
+        if len(extracted) > 4000:
+            extracted = extracted[:3999].rstrip() + "…"
+        entry = f"User: {extracted}"
+        if used + len(entry) > max_user_chars:
+            break
+        lines.append(entry)
+        used += len(entry)
+    return "\n".join(lines)
+
+
+def _content_to_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                if isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+        return "\n".join(parts)
+    return ""
+
+
+def _extract_user_query(text: str) -> str:
+    start = text.find("<user_query>")
+    end = text.find("</user_query>")
+    if start >= 0 and end > start:
+        return text[start + len("<user_query>") : end].strip()
+    return ""
 
 
 def hook_event_from_stdin(raw: str) -> dict:
