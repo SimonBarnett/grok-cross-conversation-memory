@@ -83,6 +83,14 @@ class TestMemoryStore(unittest.TestCase):
         self.assertEqual(len(self.store.list_for_user("alice")), 1)
         self.assertEqual(len(self.store.list_for_user("bob")), 1)
 
+    def test_persist_across_reopen(self):
+        """SQLite file survives process/store reopen (cross-conversation)."""
+        self.store.add("user1", "remember me", kind="fact", importance=0.7)
+        reopened = MemoryStore(self.db)
+        hits = reopened.list_for_user("user1")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].content, "remember me")
+
 
 if __name__ == "__main__":
     unittest.main()

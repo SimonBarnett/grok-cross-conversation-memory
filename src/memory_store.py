@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 
 DEFAULT_DB = Path.home() / ".grok" / "memory.db"
@@ -44,8 +45,22 @@ class MemoryStore:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
+        # sqlite3 Connection __exit__ only commits/rollbacks; it does NOT close.
+        # On Windows that leaves test.db locked so TemporaryDirectory.cleanup fails.
+        conn = self._connect()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def _init_db(self) -> None:
-        with self._connect() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS memories (
@@ -73,7 +88,7 @@ class MemoryStore:
         importance: float = 0.5,
     ) -> Memory:
         now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
+        with self._conn() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO memories
@@ -95,7 +110,7 @@ class MemoryStore:
         )
 
     def get(self, memory_id: int) -> Optional[Memory]:
-        with self._connect() as conn:
+        with self._conn() as conn:
             row = conn.execute(
                 "SELECT * FROM memories WHERE id = ?", (memory_id,)
             ).fetchone()
@@ -114,14 +129,14 @@ class MemoryStore:
             params.append(kind)
         query += " ORDER BY importance DESC, updated_at DESC LIMIT ?"
         params.append(limit)
-        with self._connect() as conn:
+        with self._conn() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def search(self, user_id: str, query: str, limit: int = 10) -> list[Memory]:
         """Simple substring search over memory content."""
         pattern = f"%{query.lower()}%"
-        with self._connect() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM memories
@@ -145,7 +160,7 @@ class MemoryStore:
         new_content = content if content is not None else mem.content
         new_importance = importance if importance is not None else mem.importance
         now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 UPDATE memories
@@ -157,13 +172,13 @@ class MemoryStore:
         return self.get(memory_id)
 
     def delete(self, memory_id: int) -> bool:
-        with self._connect() as conn:
+        with self._conn() as conn:
             cur = conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             return cur.rowcount > 0
 
     def delete_all_for_user(self, user_id: str) -> int:
         """Delete every memory for a user. Supports the privacy requirement."""
-        with self._connect() as conn:
+        with self._conn() as conn:
             cur = conn.execute("DELETE FROM memories WHERE user_id = ?", (user_id,))
             return cur.rowcount
 
