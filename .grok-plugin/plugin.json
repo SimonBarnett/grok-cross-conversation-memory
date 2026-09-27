@@ -1,0 +1,12 @@
+{
+  "name": "grok-cross-conversation-memory",
+  "version": "0.2.0",
+  "description": "Inject MemoryStore context at new-chat start and persist summaries/facts at chat end.",
+  "author": {
+    "name": "SimonBarnett"
+  },
+  "homepage": "https://github.com/SimonBarnett/grok-cross-conversation-memory",
+  "repository": "https://github.com/SimonBarnett/grok-cross-conversation-memory",
+  "license": "MIT",
+  "keywords": ["memory", "hooks", "session", "context"]
+}

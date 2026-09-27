@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${GROK_PLUGIN_ROOT}/src/hooks/session_start.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${GROK_PLUGIN_ROOT}/src/hooks/session_end.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
