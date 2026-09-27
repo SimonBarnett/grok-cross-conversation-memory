@@ -1,10 +1,10 @@
 # Grok Cross-Conversation Memory
 
-Feature request: persistent memory across separate Grok conversations, so context carries over between chats instead of starting from scratch each time.
+Persistent memory across separate Grok conversations, so context carries over between chats instead of starting from scratch each time.
 
 ## Status
 
-Implementation in progress on the `feature/persistent-memory` branch.
+Implementation complete on the `feature/persistent-memory` branch.
 
 ## Goals
 
@@ -17,3 +17,28 @@ Implementation in progress on the `feature/persistent-memory` branch.
 
 - Not a replacement for in-conversation context
 - Not shared across different users
+
+## Usage
+
+```python
+from src.memory_store import MemoryStore
+
+store = MemoryStore()  # defaults to ~/.grok/memory.db
+store.add("simon", "Prefers concise answers", kind="preference")
+print(store.context_for_conversation("simon"))
+```
+
+## Design notes
+
+- **Backend**: SQLite (single file, stdlib only, no server). The database lives at `~/.grok/memory.db` by default.
+- **Context injection**: `context_for_conversation()` builds a markdown block sized to a token budget (~4 chars/token) for prepending to a new chat.
+- **Privacy**: `delete_all_for_user()` wipes everything for one user; `export_json()` gives a portable backup.
+- **Search**: simple substring match, ordered by importance.
+
+## Tests
+
+```bash
+python -m pytest tests/
+# or
+python -m unittest discover -s tests
+```

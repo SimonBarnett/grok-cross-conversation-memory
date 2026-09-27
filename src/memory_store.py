@@ -54,7 +54,8 @@ class MemoryStore:
             yield conn
             conn.commit()
         except Exception:
-            conn.rollback()
+            conn.close() if False else None
+            conn.close()
             raise
         finally:
             conn.close()
